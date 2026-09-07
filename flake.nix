@@ -16,15 +16,17 @@
       {
         devShells.default = pkgs.mkShell {
           name = "litellm-guardrail-lean-ctx";
-          # Keep the toolchain minimal: Python 3.13 + the test runner and a
-          # couple of linters. `uv sync` pulls the actual project deps
-          # (litellm, httpx, pytest-asyncio, pyyaml, ruff) from pyproject.
+          # Keep the toolchain minimal: Python 3.13 + the test runner, the
+          # linter/formatter, and the type checker. `uv sync` pulls the
+          # actual project deps (litellm, httpx, pytest-asyncio, pyyaml) from
+          # pyproject.
           packages = with pkgs; [
             python
             uv
             pythonPackages.pytest
             pythonPackages.pytest-asyncio
             pythonPackages.ruff
+            pythonPackages.ty
             stdenv.cc.cc.lib
           ];
 
@@ -47,6 +49,11 @@
             type = "app";
             program = "${pythonPackages.ruff}/bin/ruff";
             args = [ "format" "src" "tests" ];
+          };
+          ty = {
+            type = "app";
+            program = "${pythonPackages.ty}/bin/ty";
+            args = [ "check" "src" ];
           };
         };
       });

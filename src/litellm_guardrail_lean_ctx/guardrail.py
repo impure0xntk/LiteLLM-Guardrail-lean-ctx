@@ -13,7 +13,7 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from litellm.integrations.custom_guardrail import (
     CustomGuardrail,
@@ -44,7 +44,10 @@ from .messages import (
 if TYPE_CHECKING:
     from litellm.litellm_core_utils.litellm_logging import Logging as LiteLLMLoggingObj
     from litellm.types.guardrails import Guardrail, LitellmParams
-    from litellm.types.utils import GenericGuardrailAPIInputs
+    from litellm.types.utils import (
+        ChatCompletionToolParam,
+        GenericGuardrailAPIInputs,
+    )
 
 
 __all__ = [
@@ -143,10 +146,14 @@ def _retrieve_call_ids_from_request(
     never truncated, so reading the untranslated messages here keeps the
     pairing intact.
     """
-    raw_messages = request_data.get("messages")
-    if not _is_object_list(raw_messages):
+    raw_messages: object = request_data.get("messages")
+    if not isinstance(raw_messages, list):
         return frozenset()
-    return find_retrieve_tool_call_ids(raw_messages)
+    # ``find_retrieve_tool_call_ids`` walks Mapping-shaped rows; the litellm
+    # adapter's own ``AllMessageValues`` TypedDicts qualify structurally so a
+    # narrowing cast keeps the type checker honest.
+    dict_rows = [row for row in raw_messages if isinstance(row, dict)]
+    return find_retrieve_tool_call_ids(dict_rows)
 
 
 def _coerce_event_hook(
@@ -171,11 +178,6 @@ def _resolve_call_id(
     kwargs_call_id = request_state.get("litellm_call_id")
     return kwargs_call_id if isinstance(kwargs_call_id, str) else None
 
-
-
-class _SupportsGetItem:
-    """Protocol marker; ``__getitem__`` on a non-Mapping signals a tool call object."""
-    pass
 
 
 def _extract_retrieve_tool_calls(response: object) -> list[dict[str, Any]]:
@@ -217,9 +219,11 @@ def _extract_retrieve_tool_calls(response: object) -> list[dict[str, Any]]:
             def get(key, _c=call):
                 return _c.get(key)
         elif hasattr(call, "__getitem__"):
-            def get(key, _c=call):
+            subscript_view = cast("Mapping[Any, Any]", call)
+
+            def get(key, _v=subscript_view):
                 try:
-                    return _c[key]
+                    return _v[key]
                 except Exception:
                     return None
         else:
@@ -229,12 +233,6 @@ def _extract_retrieve_tool_calls(response: object) -> list[dict[str, Any]]:
         if isinstance(function, Mapping):
             def get_fn(key, _f=function, default=None):
                 return _f.get(key, default)
-        elif isinstance(function, _SupportsGetItem):
-            def get_fn(key, _f=function, default=None):
-                try:
-                    return _f[key]
-                except Exception:
-                    return default
         else:
             def get_fn(key, _f=function, default=None):
                 return getattr(_f, key, default)
@@ -488,11 +486,18 @@ class LeanCTXGuardrail(CustomGuardrail):
         if not _is_object_list(structured_messages) or not structured_messages:
             return inputs
 
-        messages: list[dict[str, Any]] = [
-            row for row in structured_messages if _is_str_object_dict(row)
-        ]
-        if not messages:
+        # ``structured_messages`` is a list of litellm TypedDicts (e.g.
+        # ``ChatCompletionUserMessage``); TypedDicts are not ``dict`` subtypes
+        # for ty, but they are structurally dict-shaped for ``_is_str_object_dict``
+        # so we narrow explicitly with a cast to keep the rest of the pipeline
+        # type-safe.
+        raw_rows: list[dict[str, Any]] = cast(
+            "list[dict[str, Any]]",
+            [row for row in (structured_messages or []) if _is_str_object_dict(row)],
+        )
+        if not raw_rows:
             return inputs
+        messages = raw_rows
 
         # The last user message is the instruction the model is being asked to
         # act on, so replacing it with a marker means the model answers a
@@ -542,7 +547,13 @@ class LeanCTXGuardrail(CustomGuardrail):
         self._record_success(request_data, outcome)
 
         if not self.ccr_retrieval or not outcome.ccr_hashes:
-            return {**inputs, "structured_messages": rewritten}  # type: ignore[return-value]
+            # ``inputs`` is a TypedDict (``GenericGuardrailAPIInputs``); we hand
+            # back a fresh dict with the rewritten rows cast to the same shape
+            # so the litellm consumer does not see a wider type.
+            return cast(
+                "GenericGuardrailAPIInputs",
+                {**inputs, "structured_messages": rewritten},
+            )
 
         # Record the hashes issued for this call so the agentic-loop hook can
         # reject forged hash-shaped strings planted in a user prompt.
@@ -558,17 +569,23 @@ class LeanCTXGuardrail(CustomGuardrail):
 
         existing_tools = inputs.get("tools")
         retrieve_tool = _build_retrieve_tool()
+        # The ``ChatCompletionToolParam`` TypedDict is structurally compatible
+        # with our dict-built tool spec; the litellm consumer accepts both.
+        retrieve_tool_param = cast("ChatCompletionToolParam", retrieve_tool)
         if isinstance(existing_tools, list):
             merged_tools = list(existing_tools)
             if not any(_is_retrieve_tool(t) for t in merged_tools):
-                merged_tools.append(retrieve_tool)
+                merged_tools.append(retrieve_tool_param)
         else:
-            merged_tools = [retrieve_tool]
+            merged_tools = [retrieve_tool_param]
 
-        return {  # type: ignore[return-value]
-            "structured_messages": rewritten,
-            "tools": merged_tools,
-        }
+        return cast(
+            "GenericGuardrailAPIInputs",
+            {
+                "structured_messages": rewritten,
+                "tools": merged_tools,
+            },
+        )
 
     # ----- standard logging integration -------------------------------------
 
@@ -681,7 +698,8 @@ class LeanCTXGuardrail(CustomGuardrail):
 
         retrieved: list[tuple[dict[str, Any], str]] = []
         for tc in tool_calls:
-            arguments = tc.get("arguments") if isinstance(tc.get("arguments"), Mapping) else {}
+            raw_arguments = tc.get("arguments")
+            arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, Mapping) else {}
             raw_hash = arguments.get("hash", "")
             hash_value = str(raw_hash).lower()
             query = arguments.get("query")
@@ -866,7 +884,7 @@ def initialize_guardrail(
         default_on=litellm_params.default_on or False,
         unreachable_fallback=litellm_params.unreachable_fallback,
         timeout=litellm_params.timeout,
-        ccr_retrieval=litellm_params.ccr_retrieval,
+        ccr_retrieval=getattr(litellm_params, "ccr_retrieval", True),
     )
     litellm.logging_callback_manager.add_litellm_callback(callback)
     return callback

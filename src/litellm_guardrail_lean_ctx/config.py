@@ -18,7 +18,7 @@ except Exception:  # pragma: no cover - keep import lazy for type-only use
     GuardrailConfigModel = BaseModel  # type: ignore[assignment,misc]
 
 
-class LeanCTXGuardrailConfigModel(GuardrailConfigModel):  # type: ignore[misc]
+class LeanCTXGuardrailConfigModel(GuardrailConfigModel):  # type: ignore[misc,unsupported-base]
     """Configuration schema exposed to the litellm-proxy admin UI."""
 
     api_base: str | None = Field(

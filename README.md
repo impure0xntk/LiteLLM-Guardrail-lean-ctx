@@ -148,4 +148,4 @@ pyproject.toml
 
 ## License
 
-MIT.
+Apache-2.0.

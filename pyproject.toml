@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "LiteLLM custom guardrail that compresses context via a lean-ctx proxy server."
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "MIT" }
-authors = [{ name = "LiteLLM-Guardrail-lean-ctx" }]
+license = { text = "Apache-2.0" }
+authors = [{ name = "ntk" }]
 keywords = ["litellm", "guardrail", "lean-ctx", "context-compression"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -29,6 +29,7 @@ dev = [
   "ruff>=0.6",
   "httpx>=0.27",
   "pyyaml>=6",
+  "ty>=0.0.77"
 ]
 
 [project.urls]
@@ -52,6 +53,23 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["RUF001"]
+
+[tool.ty]
+# ``GuardrailConfigModel`` in litellm's stubs resolves to
+# ``GuardrailConfigModel | BaseModel`` because the runtime class is loaded
+# dynamically. The mix-in is correct for pydantic but ty cannot compute a
+# stable MRO for it, so we silence the unsupported-base warning at file scope.
+[tool.ty.src]
+include = ["src"]
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.rules]
+# ``GuardrailConfigModel`` is loaded dynamically in litellm so its type is a
+# union at type-check time; the runtime mix-in is correct, but ty cannot
+# compute a stable MRO for it. The warning is informational.
+unsupported-base = "ignore"
 
 [tool.pytest.ini_options]
 minversion = "8"
