@@ -1,5 +1,5 @@
 {
-  description = "litellm-guardrail-lean-ctx development shell";
+  description = "litellm-guardrail-lean-ctx development shell and package";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -12,8 +12,11 @@
         pkgs = import nixpkgs { inherit system; };
         python = pkgs.python313;
         pythonPackages = pkgs.python313Packages;
+        guardrailPkg = pkgs.python313Packages.callPackage ./nix/package.nix { };
       in
       {
+        packages.default = guardrailPkg;
+
         devShells.default = pkgs.mkShell {
           name = "litellm-guardrail-lean-ctx";
           # Keep the toolchain minimal: Python 3.13 + the test runner, the
