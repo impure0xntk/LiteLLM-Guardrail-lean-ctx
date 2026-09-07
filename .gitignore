@@ -1,0 +1,23 @@
+# Python build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+
+# uv
+.venv/
+uv.lock
+
+# nix
+result*
+.direnv/
+
+# editor / OS
+.vscode/
+.idea/
+.DS_Store

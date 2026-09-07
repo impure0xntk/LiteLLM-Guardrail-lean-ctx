@@ -1,0 +1,29 @@
+# Example litellm-proxy config that wires the lean-ctx guardrail into the
+# OpenAI chat completions endpoint. Drop it next to your existing
+# `litellm.yaml` or load it with `--config`.
+#
+# The guardrail class lives at
+# `litellm_guardrail_lean_ctx.guardrail.LeanCTXGuardrail`, but the proxy
+# resolves integrations by name. We register `lean-ctx` from the package
+# entry point (or by calling `register()` at boot).
+
+model_list:
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  - guardrail_name: lean-ctx-compression
+    litellm_params:
+      guardrail: lean-ctx          # integration key the package registers
+      mode: pre_call               # compress the request before it hits the model
+      api_base: http://localhost:4444    # lean-ctx proxy port (default 4444)
+      api_key: os.environ/LEAN_CTX_API_KEY   # bearer token; lean-ctx prints one on `lean-ctx proxy enable`
+      model: gpt-4o                # forwarded to /v1/compress; lean-ctx uses it for ranking
+      unreachable_fallback: fail_closed  # fail_open to forward uncompressed on outage
+      ccr_retrieval: true          # round-trip CCR markers via /v1/retrieve/<hash>
+
+litellm_settings:
+  # Optional: register the integration from Python if you run an embedded proxy.
+  # callbacks: ["litellm_guardrail_lean_ctx"]
