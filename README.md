@@ -53,7 +53,7 @@ model_list:
 guardrails:
   - guardrail_name: lean-ctx-compression
     litellm_params:
-      guardrail: lean-ctx
+      guardrail: litellm_guardrail_lean_ctx.LeanCTXGuardrail
       mode: pre_call
       api_base: http://localhost:4444
       api_key: os.environ/LEAN_CTX_API_KEY
@@ -65,7 +65,15 @@ guardrails:
 Lean-ctx prints a loopback bearer token when `lean-ctx proxy enable` runs;
 point `LEAN_CTX_API_KEY` at it and the guardrail is authenticated.
 
-For embedded proxies, call `register()` once at boot:
+The dotted `guardrail:` value points the proxy at the
+`LeanCTXGuardrail` class directly; LiteLLM resolves it through
+`get_instance_fn`, so no extra registration step is needed as long as the
+package is importable from the proxy's working directory (e.g. drop a
+`litellm_guardrail_lean_ctx/` folder next to `config.yaml`, or install the
+wheel into the proxy's Python environment).
+
+For embedded proxies that already import the package, you can also call
+`register()` once at boot to expose the short key `lean-ctx`:
 
 ```python
 import litellm_guardrail_lean_ctx

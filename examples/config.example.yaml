@@ -16,7 +16,10 @@ model_list:
 guardrails:
   - guardrail_name: lean-ctx-compression
     litellm_params:
-      guardrail: lean-ctx          # integration key the package registers
+      guardrail: litellm_guardrail_lean_ctx.LeanCTXGuardrail
+      # dotted class path; LiteLLM resolves it via get_instance_fn.
+      # For embedded proxies, call litellm_guardrail_lean_ctx.register()
+      # at boot and use `guardrail: lean-ctx` instead.
       mode: pre_call               # compress the request before it hits the model
       api_base: http://localhost:4444    # lean-ctx proxy port (default 4444)
       api_key: os.environ/LEAN_CTX_API_KEY   # bearer token; lean-ctx prints one on `lean-ctx proxy enable`

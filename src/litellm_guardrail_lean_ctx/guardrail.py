@@ -344,8 +344,28 @@ class LeanCTXGuardrail(CustomGuardrail):
         unreachable_fallback: Literal["fail_closed", "fail_open"] | None = None,
         timeout: float | None = None,
         ccr_retrieval: bool = True,
+        **kwargs: Any,
     ) -> None:
         import os
+
+        # ``litellm.proxy.guardrails.guardrail_registry.initialize_custom_guardrail``
+        # forwards every field from ``LitellmParams.model_dump(exclude_none=True)``
+        # via ``**extra_params``. ``LitellmParams`` mixes in models for the other
+        # built-in guardrails (Bedrock, Presidio, Lakera, Javelin, ...) so the
+        # dump includes fields this class does not understand (``version``,
+        # ``presidio_language``, ``block_on_violation``, ...). Drop the unknown
+        # ones instead of letting ``TypeError`` abort proxy startup, but log
+        # them at debug so a misconfiguration is still observable.
+        unknown_kwargs = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in {"guardrail", "mode"}
+        }
+        if unknown_kwargs:
+            logger.debug(
+                "LeanCTXGuardrail ignoring unknown kwargs: %s",
+                sorted(unknown_kwargs),
+            )
 
         resolved_api_base = (
             api_base
