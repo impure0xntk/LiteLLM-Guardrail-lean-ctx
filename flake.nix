@@ -37,6 +37,7 @@
             export PYTHONDONTWRITEBYTECODE=1
             export PYTHONUNBUFFERED=1
             export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+            uv sync --all-extras
           '';
 
           UV_PYTHON = "${python}/bin/python3";
