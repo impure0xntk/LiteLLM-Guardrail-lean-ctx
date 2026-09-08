@@ -35,6 +35,7 @@ async def guardrail(mock_server: MockLeanCTXServer) -> LeanCTXGuardrail:
         guardrail_name="lean-ctx-test",
         event_hook="pre_call",
         default_on=True,
+        logging=True,
     )
 
 
@@ -47,6 +48,7 @@ async def fail_open_guardrail(mock_server: MockLeanCTXServer) -> LeanCTXGuardrai
         event_hook="pre_call",
         default_on=True,
         unreachable_fallback="fail_open",
+        logging=True,
     )
 
 

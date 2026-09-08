@@ -90,6 +90,14 @@ litellm_guardrail_lean_ctx.register()
 | `unreachable_fallback` | `fail_closed` | `fail_closed` raises; `fail_open` forwards uncompressed with a warning. |
 | `timeout` | `60` | Per-call HTTP timeout in seconds. |
 | `ccr_retrieval` | `true` | Inject the `lean_ctx_retrieve` tool and round-trip CCR markers. |
+| `logging` | `false` | Emit concise `INFO` compression summaries. LiteLLM standard guardrail metadata is always recorded. |
+
+When `logging: true` is enabled, the guardrail uses Python logging for a
+one-line summary containing status, duration, and token statistics. It does
+not log prompts, responses, API keys, or retrieved content. The
+`log_guardrail_information` decorator and LiteLLM's standard guardrail logging
+metadata remain in use for downstream callbacks such as OpenTelemetry,
+Langfuse, and Datadog.
 
 ## Development
 

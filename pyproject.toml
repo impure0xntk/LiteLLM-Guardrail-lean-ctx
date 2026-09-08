@@ -78,3 +78,5 @@ asyncio_mode = "auto"
 filterwarnings = [
   "ignore::DeprecationWarning",
 ]
+log_cli = true
+log_cli_level = "INFO"

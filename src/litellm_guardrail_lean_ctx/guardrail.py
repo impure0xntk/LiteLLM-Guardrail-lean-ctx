@@ -344,6 +344,7 @@ class LeanCTXGuardrail(CustomGuardrail):
         unreachable_fallback: Literal["fail_closed", "fail_open"] | None = None,
         timeout: float | None = None,
         ccr_retrieval: bool = True,
+        logging: bool = False,
         **kwargs: Any,
     ) -> None:
         import os
@@ -392,6 +393,7 @@ class LeanCTXGuardrail(CustomGuardrail):
             "fail_open" if unreachable_fallback == "fail_open" else "fail_closed"
         )
         self.ccr_retrieval = ccr_retrieval
+        self.logging_enabled = logging
         # hash registry: litellm_call_id -> (frozenset[hash], expiry monotonic).
         # A forged hash-shaped string from another request must not pass CCR
         # validation, so we scope every hash by the call id that produced it.
@@ -610,6 +612,26 @@ class LeanCTXGuardrail(CustomGuardrail):
 
     # ----- standard logging integration -------------------------------------
 
+    def _emit_compression_log(
+        self,
+        *,
+        outcome: _CompressOutcome,
+        status: str,
+    ) -> None:
+        if not self.logging_enabled:
+            return
+        logger.info(
+            "LeanCTX guardrail compression status=%s duration_seconds=%.3f "
+            "tokens_before=%s tokens_after=%s tokens_saved=%s ccr_hashes=%d error=%s",
+            status,
+            outcome.duration_seconds,
+            outcome.stats.get("tokens_before"),
+            outcome.stats.get("tokens_after"),
+            outcome.stats.get("tokens_saved"),
+            len(outcome.ccr_hashes),
+            outcome.error,
+        )
+
     def _record_success(
         self,
         request_data: dict,
@@ -621,12 +643,14 @@ class LeanCTXGuardrail(CustomGuardrail):
                 request_data=request_data,
                 guardrail_status="success",
                 guardrail_provider=GUARDRAIL_PROVIDER_NAME,
+                event_type=GuardrailEventHooks.pre_call,
                 start_time=time.time() - outcome.duration_seconds,
                 end_time=time.time(),
                 duration=outcome.duration_seconds,
             )
         except Exception:  # pragma: no cover - best-effort logging
             logger.debug("LeanCTX: failed to record success log", exc_info=True)
+        self._emit_compression_log(outcome=outcome, status="success")
         try:
             from litellm.proxy.common_utils.callback_utils import (
                 add_guardrail_to_applied_guardrails_header,
@@ -652,12 +676,14 @@ class LeanCTXGuardrail(CustomGuardrail):
                 request_data=request_data,
                 guardrail_status="guardrail_failed_to_respond",
                 guardrail_provider=GUARDRAIL_PROVIDER_NAME,
+                event_type=GuardrailEventHooks.pre_call,
                 start_time=time.time() - outcome.duration_seconds,
                 end_time=time.time(),
                 duration=outcome.duration_seconds,
             )
         except Exception:  # pragma: no cover - best-effort logging
             logger.debug("LeanCTX: failed to record failure log", exc_info=True)
+        self._emit_compression_log(outcome=outcome, status="failure")
         try:
             from litellm.proxy.common_utils.callback_utils import (
                 add_guardrail_to_applied_guardrails_header,
@@ -906,6 +932,7 @@ def initialize_guardrail(
         unreachable_fallback=litellm_params.unreachable_fallback,
         timeout=litellm_params.timeout,
         ccr_retrieval=getattr(litellm_params, "ccr_retrieval", True),
+        logging=getattr(litellm_params, "logging", False),
     )
     litellm.logging_callback_manager.add_litellm_callback(callback)
     return callback

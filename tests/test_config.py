@@ -20,6 +20,12 @@ def test_config_model_defaults() -> None:
     assert cfg.api_base is None
     assert cfg.unreachable_fallback == "fail_closed"
     assert cfg.ccr_retrieval is True
+    assert cfg.logging is False
+
+
+def test_config_model_enables_logging() -> None:
+    cfg = LeanCTXGuardrailConfigModel(logging=True)
+    assert cfg.logging is True
 
 
 def test_config_model_coerces_timeout() -> None:

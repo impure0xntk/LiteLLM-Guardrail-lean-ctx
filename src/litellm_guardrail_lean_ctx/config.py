@@ -61,6 +61,13 @@ class LeanCTXGuardrailConfigModel(GuardrailConfigModel):  # type: ignore[misc,un
             "and round-trips compressed tool results back to the original content."
         ),
     )
+    logging: bool = Field(
+        default=False,
+        description=(
+            "When True, emits a concise INFO log for each compression attempt. "
+            "LiteLLM standard guardrail logging metadata is recorded regardless."
+        ),
+    )
 
     @staticmethod
     def ui_friendly_name() -> str:

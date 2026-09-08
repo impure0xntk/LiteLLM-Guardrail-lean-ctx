@@ -26,8 +26,9 @@ def _request_with_headers(headers: dict[str, str]) -> dict:
 
 
 async def test_apply_guardrail_compresses_and_records_stats(
-    guardrail, mock_server: MockLeanCTXServer
+    guardrail, mock_server: MockLeanCTXServer, caplog: pytest.LogCaptureFixture
 ) -> None:
+    caplog.set_level("INFO", logger="litellm_guardrail_lean_ctx.guardrail")
     messages = [
         {"role": "system", "content": "be terse"},
         {"role": "user", "content": "first user turn"},
@@ -56,6 +57,13 @@ async def test_apply_guardrail_compresses_and_records_stats(
     assert len(mock_server.requests) == 1
     assert mock_server.requests[0].path == "/v1/compress"
     assert mock_server.requests[0].headers["authorization"] == f"Bearer {mock_server.bearer_token}"
+    assert "LeanCTX guardrail compression status=success" in caplog.text
+    assert "tokens_saved=" in caplog.text
+    metadata = request_data.get("metadata", {})
+    records = metadata.get("standard_logging_guardrail_information", [])
+    assert len(records) == 1
+    assert records[0]["guardrail_provider"] == "lean-ctx"
+    assert records[0]["guardrail_status"] == "success"
 
 
 async def test_apply_guardrail_skips_background_requests(guardrail) -> None:
