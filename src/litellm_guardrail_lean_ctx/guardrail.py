@@ -602,6 +602,7 @@ class LeanCTXGuardrail(CustomGuardrail):
         return cast(
             "GenericGuardrailAPIInputs",
             {
+                **inputs,
                 "structured_messages": rewritten,
                 "tools": merged_tools,
             },
