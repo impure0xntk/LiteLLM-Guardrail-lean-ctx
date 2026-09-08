@@ -135,6 +135,37 @@ def _is_object_list(value: object) -> bool:
     return isinstance(value, list)
 
 
+def _recalculate_full_context_stats(
+    stats: dict[str, Any],
+    *,
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    model: str | None,
+) -> dict[str, Any]:
+    """Recalculate compression statistics over the complete conversation."""
+    try:
+        import litellm
+
+        tokens_before = litellm.token_counter(model=model, messages=before)
+        tokens_after = litellm.token_counter(model=model, messages=after)
+    except Exception:
+        logger.debug("LeanCTX: unable to recalculate full-context token statistics", exc_info=True)
+        return stats
+
+    if not isinstance(tokens_before, int) or not isinstance(tokens_after, int):
+        return stats
+    if tokens_before <= 0:
+        return stats
+
+    return {
+        **stats,
+        "tokens_before": tokens_before,
+        "tokens_after": tokens_after,
+        "tokens_saved": tokens_before - tokens_after,
+        "compression_ratio": tokens_after / tokens_before,
+    }
+
+
 def _retrieve_call_ids_from_request(
     request_data: Mapping[str, Any],
 ) -> frozenset[str]:
@@ -565,6 +596,12 @@ class LeanCTXGuardrail(CustomGuardrail):
             messages[i] if i in protected else compressed_by_index[i]
             for i in range(len(messages))
         ]
+        outcome.stats = _recalculate_full_context_stats(
+            outcome.stats,
+            before=messages,
+            after=rewritten,
+            model=model_name,
+        )
 
         self._record_success(request_data, outcome)
 

@@ -66,6 +66,42 @@ async def test_apply_guardrail_compresses_and_records_stats(
     assert records[0]["guardrail_status"] == "success"
 
 
+async def test_apply_guardrail_records_full_context_token_stats(
+    guardrail, mock_server: MockLeanCTXServer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import litellm
+
+    calls: list[list[dict]] = []
+
+    def fake_token_counter(*, model: str | None, messages: list[dict]) -> int:
+        calls.append(messages)
+        return 100 if len(calls) == 1 else 60
+
+    monkeypatch.setattr(litellm, "token_counter", fake_token_counter)
+    messages = [
+        {"role": "system", "content": "protected system"},
+        {"role": "user", "content": "compressible history"},
+        {"role": "user", "content": "live instruction"},
+    ]
+    request_data = dict(_BASE_REQUEST)
+
+    await guardrail.apply_guardrail(
+        inputs=make_inputs(messages),
+        request_data=request_data,
+        input_type="request",
+    )
+
+    stats = request_data["metadata"]["standard_logging_guardrail_information"][0]["guardrail_response"]
+    assert stats["tokens_before"] == 100
+    assert stats["tokens_after"] == 60
+    assert stats["tokens_saved"] == 40
+    assert stats["compression_ratio"] == 0.6
+    assert calls[0] == messages
+    assert len(calls[1]) == len(messages)
+    assert calls[1][0] == messages[0]
+    assert calls[1][-1] == messages[-1]
+
+
 async def test_apply_guardrail_skips_background_requests(guardrail) -> None:
     messages = [{"role": "user", "content": "hi"}]
     request_data = dict(_BASE_REQUEST)
