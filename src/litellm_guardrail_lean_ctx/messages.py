@@ -155,30 +155,46 @@ def restore_content_shapes(
 
 
 def _group_tool_exchanges(messages: SequenceLike) -> list[frozenset[int]]:
-    """Group tool exchanges: assistant(tool_calls) rows plus their tool/function rows.
+    """Group message indices into tool exchanges.
 
-    Returns the exchanges as ordered frozensets of indices. The upstream headroom
-    guardrail relies on the same grouping so a protected assistant tool call
-    cannot end up answered by a marker standing in for the result the model
-    just asked for.
+    Membership is by ``tool_call_id`` ownership rather than adjacency, so an
+    assistant row that declared tool calls is grouped with the contiguous tool
+    rows answering those ids; an orphan or undeclared tool row opens its own
+    single-row group instead of being swept into the exchange it happens to
+    sit next to. Every other row is its own group.
+
+    Mirrors litellm's ``group_tool_exchanges`` so lean-ctx holds back exactly
+    the rows headroom does: a protected assistant tool call is expanded to its
+    declared result rows, never to unrelated tool rows that happen to follow
+    it. The over-protection that previously starved ``/v1/compress`` (and
+    under-reported ``tokens_before``) came from sweeping those undeclared rows
+    into a neighbor's exchange.
     """
     groups: list[frozenset[int]] = []
-    current: set[int] = set()
-    for index, message in enumerate(messages):
-        role = message.get("role")
-        if role == "assistant" and message.get("tool_calls"):
-            if current:
-                groups.append(frozenset(current))
-            current = {index}
-        elif role in ("tool", "function"):
-            current.add(index)
-        else:
-            if current:
-                groups.append(frozenset(current))
-                current = set()
-    if current:
-        groups.append(frozenset(current))
+    index = 0
+    while index < len(messages):
+        declared = _declared_tool_call_ids(messages[index])
+        end = index + 1
+        while (
+            declared
+            and end < len(messages)
+            and messages[end].get("role") in ("tool", "function")
+            and str(messages[end].get("tool_call_id")) in declared
+        ):
+            end += 1
+        groups.append(frozenset(range(index, end)))
+        index = end
     return groups
+
+
+def _declared_tool_call_ids(message: Mapping[str, Any]) -> frozenset[str]:
+    """Ids of the tool calls an assistant row declares in ``tool_calls``."""
+    tool_calls = message.get("tool_calls")
+    if not isinstance(tool_calls, list):
+        return frozenset()
+    return frozenset(
+        str(call["id"]) for call in tool_calls if isinstance(call, Mapping) and call.get("id")
+    )
 
 
 def get_protected_indices(messages: SequenceLike) -> frozenset[int]:
